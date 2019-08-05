@@ -17,7 +17,20 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   List _lista = [];
+  Map<String, dynamic> _lastRemoved;
+  int _lastRemovedPos;
   final textoController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _readData().then((data) {
+      setState(() {
+        _lista = json.decode(data);
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +62,7 @@ class _HomeState extends State<Home> {
           ],
         ),
         Expanded(
-          child: lista_exibicao(),
+          child: RefreshIndicator(child: lista_exibicao(), onRefresh: refrash),
         )
       ],
     );
@@ -59,21 +72,66 @@ class _HomeState extends State<Home> {
     return ListView.separated(
       itemCount: _lista.length,
       padding: EdgeInsets.only(top: 20),
-      itemBuilder: (context, index) {
-        return CheckboxListTile(
-          title: Text(_lista[index]["title"]),
-          value: _lista[index]["ok"],
-          secondary: CircleAvatar(
-            child: Icon(_lista[index]["ok"] ? Icons.check : Icons.error),
-          ),
-          onChanged: (b){
-            setState(() {
-              _lista[index]["ok"] = b;
-            });
-          },
-        );
-      },
+      itemBuilder: deslizarItem,
       separatorBuilder: (BuildContext context, int index) => Divider(),
+    );
+  }
+
+  Dismissible deslizarItem(context, index) {
+    return Dismissible(
+      key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
+      background: Container(
+        color: Colors.red,
+        child: Align(
+          alignment: Alignment(-0.8, 0),
+          child: Icon(Icons.delete_forever, color: Colors.white),
+        ),
+      ),
+      direction: DismissDirection.startToEnd,
+      child: listItemBuilder(context, index),
+      onDismissed: (direction) {
+        setState(() {
+          _lastRemoved = Map.from(_lista[index]);
+          _lastRemovedPos = index;
+          _lista.removeAt(index);
+          _saveData();
+
+          final snack = SnackBar(
+            content: Text("Tarefa \" ${_lastRemoved["title"]} \" removida !"),
+            action: SnackBarAction(
+                label: "Desfazer",
+                onPressed: () {
+                  setState(() {
+                    _lista.insert(_lastRemovedPos, _lastRemoved);
+                    _saveData();
+                  });
+                }),
+            duration: Duration(seconds: 2),
+          );
+
+          Scaffold.of(context).removeCurrentSnackBar();
+          Scaffold.of(context).showSnackBar(snack);
+        });
+      },
+    );
+  }
+
+  CheckboxListTile listItemBuilder(context, index) {
+    return CheckboxListTile(
+      title: Text(_lista[index]["title"]),
+      value: _lista[index]["ok"],
+      activeColor: Colors.pink,
+      secondary: CircleAvatar(
+        child: Icon(_lista[index]["ok"] ? Icons.check : Icons.error),
+        backgroundColor: Colors.pink,
+        foregroundColor: Colors.white,
+      ),
+      onChanged: (b) {
+        setState(() {
+          _lista[index]["ok"] = b;
+          _saveData();
+        });
+      },
     );
   }
 
@@ -85,6 +143,7 @@ class _HomeState extends State<Home> {
       novaLista["ok"] = false;
       _lista.add(novaLista);
       textoController.clear();
+      _saveData();
     });
   }
 
@@ -132,5 +191,21 @@ class _HomeState extends State<Home> {
       print(e);
       return null;
     }
+  }
+
+  Future<void> refrash() async {
+    await Future.delayed(Duration(seconds: 1));
+
+    setState(() {
+      _lista.sort((a, b) {
+        if (a["ok"] && !b["ok"])
+          return 1;
+        else if (!a["ok"] && b["ok"])
+          return -1;
+        else
+          return 0;
+      });
+      _saveData();
+    });
   }
 }
